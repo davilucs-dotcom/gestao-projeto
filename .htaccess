@@ -1,0 +1,5 @@
+Options -Indexes
+
+<FilesMatch "^(schema\.sql|migrar_banco_existente\.sql|README\.md)$">
+    Require all denied
+</FilesMatch>
