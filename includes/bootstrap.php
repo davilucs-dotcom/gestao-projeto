@@ -2,18 +2,32 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/config/db.php';
+require_once __DIR__ . '/security.php';
 
 $isHttps = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
-$isHttps = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+$cookiePath = getenv('SGP_COOKIE_PATH') ?: '/gestao-projetos/';
+if ($cookiePath[0] !== '/') {
+    $cookiePath = '/gestao-projetos/';
+}
+
+if (getenv('SGP_ENV') !== 'dev') {
+    ini_set('display_errors', '0');
+}
+ini_set('log_errors', '1');
+date_default_timezone_set('America/Belem');
+
 ini_set('session.use_strict_mode', '1');
+ini_set('session.use_only_cookies', '1');
 session_set_cookie_params([
     'lifetime' => 0,
-    'path' => '/gestao-projetos/',
+    'path' => $cookiePath,
     'secure' => $isHttps,
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
 session_start();
+enforce_session_timeout();
+send_security_headers(false);
 
 function h(mixed $value): string
 {
@@ -44,7 +58,54 @@ function require_auth(): array
         header('Location: login.php');
         exit;
     }
-    return $_SESSION['user'];
+
+    $user = $_SESSION['user'];
+    if (!authenticated_session_is_current($user)) {
+        expire_authenticated_session();
+    }
+
+    return $user;
+}
+
+function authenticated_session_is_current(array $user): bool
+{
+    static $validatedSessions = [];
+
+    $userId = filter_var($user['id'] ?? null, FILTER_VALIDATE_INT);
+    $sessionVersion = filter_var($user['session_version'] ?? null, FILTER_VALIDATE_INT);
+    if (!$userId || $sessionVersion === false) {
+        return false;
+    }
+
+    $cacheKey = $userId . ':' . $sessionVersion;
+    if (array_key_exists($cacheKey, $validatedSessions)) {
+        return $validatedSessions[$cacheKey];
+    }
+
+    $statement = db()->prepare('SELECT session_version FROM usuarios WHERE id = ?');
+    $statement->execute([$userId]);
+    $version = $statement->fetchColumn();
+    $databaseVersion = $version === false ? null : (int) $version;
+
+    $validatedSessions[$cacheKey] = session_version_matches($user, $databaseVersion);
+    return $validatedSessions[$cacheKey];
+}
+
+function clear_authenticated_session(string $message): void
+{
+    $_SESSION = [];
+    session_regenerate_id(true);
+    $_SESSION['flash'] = [
+        'message' => $message,
+        'type' => 'error',
+    ];
+}
+
+function expire_authenticated_session(): void
+{
+    clear_authenticated_session('Sua sessao foi encerrada porque as credenciais da conta mudaram. Entre novamente.');
+    header('Location: login.php');
+    exit;
 }
 
 function require_docente(array $user): void
@@ -55,7 +116,7 @@ function require_docente(array $user): void
     }
 }
 
-function redirect(string $location): never
+function redirect(string $location): void
 {
     header('Location: ' . $location);
     exit;
@@ -77,7 +138,8 @@ function private_upload_dir(): string
 {
     $configured = getenv('SGP_UPLOAD_DIR');
     if ($configured !== false && $configured !== '') {
-        return rtrim($configured, DIRECTORY_SEPARATOR);
+        $normalized = rtrim($configured, "/\\");
+        return $normalized === '' ? DIRECTORY_SEPARATOR : $normalized;
     }
     return dirname(__DIR__, 3) . DIRECTORY_SEPARATOR . 'private_uploads' . DIRECTORY_SEPARATOR . 'sgp';
 }

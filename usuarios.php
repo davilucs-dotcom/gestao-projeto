@@ -14,9 +14,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$targetId || strlen($password) < 10) {
             $errors[] = 'Escolha o usuario e informe uma senha com pelo menos 10 caracteres.';
         } else {
-            $statement = db()->prepare('UPDATE usuarios SET senha_hash = ? WHERE id = ?');
+            $statement = db()->prepare(
+                'UPDATE usuarios SET senha_hash = ?, session_version = session_version + 1 WHERE id = ?'
+            );
             $statement->execute([password_hash($password, PASSWORD_DEFAULT), $targetId]);
             if ($statement->rowCount() === 1) {
+                if ((int) $targetId === (int) $user['id']) {
+                    $_SESSION['user']['session_version'] = (int) $user['session_version'] + 1;
+                    unset($_SESSION['csrf_token']);
+                    session_regenerate_id(true);
+                }
                 set_flash('Senha definida para o usuario.');
                 redirect('usuarios.php');
             }

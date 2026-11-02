@@ -17,7 +17,6 @@ $flash = take_flash();
     <nav class="main-nav" aria-label="Navegação principal">
         <a href="index.php">Painel</a>
         <?php if ($user['perfil'] === 'Docente'): ?><a href="usuarios.php">Usuários</a><?php endif; ?>
-        <?php if ($user['perfil'] === 'Docente'): ?><a href="usuarios.php">Usuários</a><?php endif; ?>
         <a href="entregar_relatorio.php">Relatórios</a><a href="alterar_senha.php">Senha</a>
     </nav>
     <div class="account">

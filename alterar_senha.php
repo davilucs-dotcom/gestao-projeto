@@ -20,8 +20,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($newPassword !== $confirmation) {
         $errors[] = 'A confirmacao da senha nao confere.';
     } else {
-        $update = db()->prepare('UPDATE usuarios SET senha_hash = ? WHERE id = ?');
+        $update = db()->prepare(
+            'UPDATE usuarios SET senha_hash = ?, session_version = session_version + 1 WHERE id = ?'
+        );
         $update->execute([password_hash($newPassword, PASSWORD_DEFAULT), $user['id']]);
+        $_SESSION['user']['session_version'] = (int) $user['session_version'] + 1;
+        unset($_SESSION['csrf_token']);
         session_regenerate_id(true);
         set_flash('Senha alterada.');
         redirect('index.php');

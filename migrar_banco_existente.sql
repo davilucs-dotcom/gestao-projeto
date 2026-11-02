@@ -1,6 +1,19 @@
 -- Faça backup do banco sgp_ifpa antes de executar.
--- Faça backup do banco sgp_ifpa antes de executar.
+-- Este script e SOMENTE para o esquema legado que possui usuarios.matricula_siape
+-- e relatorios.arquivo_url, mas ainda nao possui senha_hash, matricula ou arquivo_path.
+-- Nao execute no esquema atual criado por schema.sql ou ja migrado.
 USE sgp_ifpa;
+
+-- Pre-validacao do formato do esquema (deve listar matricula_siape e arquivo_url,
+-- e nao deve listar senha_hash, matricula ou arquivo_path).
+SELECT TABLE_NAME, COLUMN_NAME
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE()
+  AND (
+      (TABLE_NAME = 'usuarios' AND COLUMN_NAME IN ('matricula_siape', 'senha_hash', 'matricula'))
+      OR (TABLE_NAME = 'relatorios' AND COLUMN_NAME IN ('arquivo_url', 'arquivo_path'))
+  )
+ORDER BY TABLE_NAME, COLUMN_NAME;
 
 -- Pré-valide: projetos abaixo de 7 dias e equipes com carga fora de 1..40.
 SELECT id, titulo, data_inicio, data_fim

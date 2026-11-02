@@ -9,6 +9,7 @@ CREATE TABLE usuarios (
     email VARCHAR(190) NOT NULL UNIQUE,
     matricula VARCHAR(30) NOT NULL UNIQUE,
     senha_hash VARCHAR(255) NOT NULL,
+    session_version INT UNSIGNED NOT NULL DEFAULT 0,
     perfil ENUM('Docente', 'Discente', 'Tecnico') NOT NULL,
     criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
@@ -21,10 +22,8 @@ CREATE TABLE projetos (
     coordenador_id INT NOT NULL,
     data_inicio DATE NOT NULL,
     data_fim DATE NOT NULL,
-    progresso TINYINT UNSIGNED NOT NULL DEFAULT 0,
     status ENUM('Em andamento', 'Concluido', 'Suspenso') NOT NULL DEFAULT 'Em andamento',
     criado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT chk_progresso CHECK (progresso BETWEEN 0 AND 100),
     CONSTRAINT chk_datas CHECK (DATEDIFF(data_fim, data_inicio) >= 7),
     CONSTRAINT fk_proj_coord FOREIGN KEY (coordenador_id)
         REFERENCES usuarios(id) ON DELETE RESTRICT,
@@ -113,3 +112,14 @@ SELECT
         ELSE 'Pendente'
     END AS situacao
 FROM relatorios AS r;
+
+CREATE OR REPLACE VIEW vw_projetos_progresso AS
+SELECT
+    p.id AS projeto_id,
+    COALESCE(
+        ROUND(100 * SUM(r.data_entrega IS NOT NULL) / NULLIF(COUNT(r.id), 0)),
+        0
+    ) AS progresso
+FROM projetos AS p
+LEFT JOIN relatorios AS r ON r.projeto_id = p.id
+GROUP BY p.id;

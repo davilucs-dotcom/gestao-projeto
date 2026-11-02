@@ -30,8 +30,8 @@ Regras de negócio refletidas no modelo:
 ## 2. Modelagem lógica
 
 ```
-USUARIOS (id PK, nome, email UK, matricula UK, senha_hash, perfil, criado_em)
-PROJETOS (id PK, titulo, resumo, modalidade, coordenador_id FK→USUARIOS, data_inicio, data_fim, progresso, status, criado_em)
+USUARIOS (id PK, nome, email UK, matricula UK, senha_hash, session_version, perfil, criado_em)
+PROJETOS (id PK, titulo, resumo, modalidade, coordenador_id FK→USUARIOS, data_inicio, data_fim, status, criado_em)
 EQUIPES (id PK, projeto_id FK→PROJETOS, usuario_id FK→USUARIOS, papel, carga_horaria_semanal, data_entrada)
           UK (projeto_id, usuario_id)
 RELATORIOS (id PK, projeto_id FK→PROJETOS, tipo, data_limite, data_entrega, arquivo_path)
@@ -65,7 +65,6 @@ erDiagram
         int coordenador_id FK
         date data_inicio
         date data_fim
-        tinyint progresso
         enum status
         timestamp criado_em
     }
@@ -100,6 +99,7 @@ O script SQL de criação está em `schema.sql` (MySQL/MariaDB), com triggers qu
 - criam os relatórios parcial e final com prazos automáticos
 
 A view `vw_relatorios_situacao` calcula a situação em tempo de consulta (não grava status estático).
+A view `vw_projetos_progresso` calcula a porcentagem entregue com base nos relatórios; progresso não é armazenado na tabela de projetos.
 
 ## 5. Como exportar o diagrama visual
 

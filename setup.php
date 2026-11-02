@@ -35,10 +35,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$errors) {
         try {
             if ($mode === 'create') {
-                $statement = $pdo->prepare(
-                    'INSERT INTO usuarios (nome, email, matricula, senha_hash, perfil) VALUES (?, ?, ?, ?, \'Docente\')'
-                );
-                $statement->execute([$name, $email, $registration, password_hash($password, PASSWORD_DEFAULT)]);
+                $lock = $pdo->query("SELECT GET_LOCK('sgp_initial_setup', 10)");
+                if ((int) $lock->fetchColumn() !== 1) {
+                    throw new RuntimeException('Nao foi possivel obter o bloqueio da configuracao inicial.');
+                }
+
+                try {
+                    $currentCount = (int) $pdo->query('SELECT COUNT(*) FROM usuarios')->fetchColumn();
+                    if ($currentCount !== 0) {
+                        throw new InvalidArgumentException('A conta inicial ja foi criada. Entre com seu usuario.');
+                    }
+
+                    $statement = $pdo->prepare(
+                        'INSERT INTO usuarios (nome, email, matricula, senha_hash, perfil) VALUES (?, ?, ?, ?, \'Docente\')'
+                    );
+                    $statement->execute([$name, $email, $registration, password_hash($password, PASSWORD_DEFAULT)]);
+                } finally {
+                    $pdo->query("SELECT RELEASE_LOCK('sgp_initial_setup')");
+                }
                 set_flash('Conta docente inicial criada. Entre com seu e-mail e senha.');
             } else {
                 $statement = $pdo->prepare(
@@ -49,7 +63,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$teacherId) {
                     throw new InvalidArgumentException('E-mail e matricula nao correspondem a uma conta docente pendente.');
                 }
-                $update = $pdo->prepare('UPDATE usuarios SET senha_hash = ? WHERE id = ? AND senha_hash IS NULL');
+                $update = $pdo->prepare(
+                    'UPDATE usuarios
+                     SET senha_hash = ?, session_version = session_version + 1
+                     WHERE id = ? AND senha_hash IS NULL'
+                );
                 $update->execute([password_hash($password, PASSWORD_DEFAULT), $teacherId]);
                 if ($update->rowCount() !== 1) {
                     throw new RuntimeException('A conta ja foi configurada.');

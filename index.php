@@ -8,17 +8,21 @@ $statsQuery = $pdo->prepare(
     'SELECT COUNT(DISTINCT p.id) AS total,
             SUM(p.status = \'Em andamento\') AS andamento,
             SUM(p.status = \'Concluido\') AS concluidos,
-            AVG(p.progresso) AS progresso_medio
-     FROM projetos p JOIN equipes e ON e.projeto_id = p.id WHERE e.usuario_id = ?'
+            AVG(vp.progresso) AS progresso_medio
+     FROM projetos p
+     JOIN vw_projetos_progresso vp ON vp.projeto_id = p.id
+     JOIN equipes e ON e.projeto_id = p.id
+     WHERE e.usuario_id = ?'
 );
 $statsQuery->execute([$user['id']]);
 $stats = $statsQuery->fetch() ?: [];
 $projectsQuery = $pdo->prepare(
-    'SELECT p.id, p.titulo, p.modalidade, p.data_inicio, p.data_fim, p.progresso, p.status, p.coordenador_id,
+    'SELECT p.id, p.titulo, p.modalidade, p.data_inicio, p.data_fim, vp.progresso, p.status, p.coordenador_id,
             u.nome AS coordenador,
             (SELECT COUNT(*) FROM equipes e2 WHERE e2.projeto_id = p.id) AS total_membros
      FROM projetos p JOIN equipes e ON e.projeto_id = p.id
      JOIN usuarios u ON u.id = p.coordenador_id
+     JOIN vw_projetos_progresso vp ON vp.projeto_id = p.id
      WHERE e.usuario_id = ? ORDER BY p.criado_em DESC'
 );
 $projectsQuery->execute([$user['id']]);
@@ -78,22 +82,44 @@ require __DIR__ . '/includes/header.php';
 <section class="charts-row" aria-label="Gráficos de acompanhamento">
     <article class="panel chart-panel">
         <h2>Projetos por modalidade</h2>
-        <canvas id="modalityChart" aria-label="Projetos por modalidade"></canvas>
+        <canvas id="modalityChart"
+            data-labels="<?= h(json_encode($chartLabels, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
+            data-values="<?= h(json_encode($chartValues)) ?>"
+            aria-label="Projetos por modalidade"></canvas>
     </article>
     <article class="panel chart-panel">
         <h2>Situação dos relatórios</h2>
-        <canvas id="reportStatusChart" aria-label="Situação dos relatórios parcial e final"></canvas>
+        <canvas id="reportStatusChart"
+            data-labels="<?= h(json_encode($reportChartLabels, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
+            data-values="<?= h(json_encode($reportChartValues)) ?>"
+            data-colors="<?= h(json_encode($reportChartColors, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>"
+            aria-label="Situação dos relatórios parcial e final"></canvas>
     </article>
 </section>
 <div class="dashboard-grid">
-    <section class="panel project-panel"><div class="section-heading"><h2>Seus projetos</h2><span class="count"><?= count($projects) ?></span></div>
+    <section class="panel project-panel" id="projetos"><div class="section-heading"><h2>Seus projetos</h2><span class="count"><?= count($projects) ?></span></div>
         <div class="table-wrap"><table><thead><tr><th>Projeto</th><th>Modalidade</th><th>Vigência</th><th>Progresso</th><th>Status</th><th></th></tr></thead><tbody>
         <?php foreach ($projects as $project): ?><tr>
             <td><strong><?= h($project['titulo']) ?></strong><small class="table-subtitle">Coord.: <?= h($project['coordenador']) ?> · <?= (int) $project['total_membros'] ?> membros</small></td>
             <td><?= h($project['modalidade']) ?></td>
             <td><?= h($project['data_inicio']) ?><small class="table-subtitle">até <?= h($project['data_fim']) ?></small></td>
             <td><div class="progress-line"><span style="width: <?= max(0, min(100, (int) $project['progresso'])) ?>%"></span></div><small><?= (int) $project['progresso'] ?>%</small></td>
-            <td><span class="tag"><?= h($project['status']) ?></span></td>
+            <td>
+                <span class="tag"><?= h($project['status']) ?></span>
+                <?php if ((int) $project['coordenador_id'] === (int) $user['id']): ?>
+                <form method="post" action="atualizar_status_projeto.php" class="project-status-form">
+                    <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                    <input type="hidden" name="projeto_id" value="<?= (int) $project['id'] ?>">
+                    <label class="visually-hidden" for="status-<?= (int) $project['id'] ?>">Atualizar status</label>
+                    <select id="status-<?= (int) $project['id'] ?>" name="status">
+                        <?php foreach (['Em andamento', 'Concluido', 'Suspenso'] as $status): ?>
+                        <option value="<?= h($status) ?>" <?= $project['status'] === $status ? 'selected' : '' ?>><?= h($status) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <button class="button quiet-dark" type="submit">Salvar</button>
+                </form>
+                <?php endif; ?>
+            </td>
             <td><a href="entregar_relatorio.php">Relatórios</a><?php if ((int) $project['coordenador_id'] === (int) $user['id']): ?> <a href="equipe.php?projeto_id=<?= (int) $project['id'] ?>">Equipe</a><?php endif; ?></td>
         </tr><?php endforeach; ?>
         <?php if (!$projects): ?><tr><td colspan="6" class="empty">Você ainda não participa de projetos.</td></tr><?php endif; ?>
@@ -119,41 +145,6 @@ require __DIR__ . '/includes/header.php';
     </form>
 </section>
 <?php endif; ?>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-<script>
-const chartDefaults = { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom' } } };
-if (window.Chart) {
-    const modalityCanvas = document.getElementById('modalityChart');
-    if (modalityCanvas) {
-        new Chart(modalityCanvas, {
-            type: 'doughnut',
-            data: {
-                labels: <?= json_encode($chartLabels, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
-                datasets: [{ data: <?= json_encode($chartValues) ?>, backgroundColor: ['#176b48', '#68a679', '#9cafa2'], borderWidth: 0 }]
-            },
-            options: { ...chartDefaults, cutout: '68%' }
-        });
-    }
-    const reportCanvas = document.getElementById('reportStatusChart');
-    if (reportCanvas) {
-        new Chart(reportCanvas, {
-            type: 'bar',
-            data: {
-                labels: <?= json_encode($reportChartLabels, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
-                datasets: [{
-                    label: 'Relatórios',
-                    data: <?= json_encode($reportChartValues) ?>,
-                    backgroundColor: <?= json_encode($reportChartColors, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>,
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                ...chartDefaults,
-                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-                plugins: { legend: { display: false } }
-            }
-        });
-    }
-}
-</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+<script src="assets/dashboard.js" defer></script>
 <?php require __DIR__ . '/includes/footer.php'; ?>

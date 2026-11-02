@@ -72,13 +72,5 @@ INSERT INTO equipes (projeto_id, usuario_id, papel, carga_horaria_semanal, data_
 -- Marca o parcial do projeto 1 como entregue (progresso 50%)
 UPDATE relatorios
 SET data_entrega = DATE_SUB(CURDATE(), INTERVAL 2 DAY),
-    arquivo_path = 'demo_parcial_p1.pdf'
+    arquivo_path = NULL
 WHERE projeto_id = @p1 AND tipo = 'Parcial';
-
-UPDATE projetos
-SET progresso = (
-    SELECT ROUND(100 * SUM(data_entrega IS NOT NULL) / COUNT(*))
-    FROM relatorios
-    WHERE projeto_id = @p1
-)
-WHERE id = @p1;
