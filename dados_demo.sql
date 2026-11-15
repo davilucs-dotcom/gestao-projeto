@@ -3,6 +3,7 @@
 -- Senha de todos os usuários: SenhaDemo123!
 -- Hash gerado com password_hash(..., PASSWORD_DEFAULT) no PHP do XAMPP.
 
+SET NAMES utf8mb4;
 USE sgp_ifpa;
 
 SET @demo_hash := '$2y$10$/Wuy3cbhnKbE6I.H02wigeaVTwAE40ddN5CvhOVsfa0Rl5FhwC6AO';

@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/rate_limit.php';
 require_once __DIR__ . '/../includes/relatorio_service.php';
 require_once __DIR__ . '/../includes/security.php';
+require_once __DIR__ . '/../includes/bootstrap.php';
 
 function assert_same_value(mixed $expected, mixed $actual, string $test): void
 {
@@ -19,6 +20,22 @@ assert_same_value(100, calcular_progresso(2, 2), 'progresso completo');
 assert_same_value(0, calcular_progresso(0, 0), 'projeto sem relatorios');
 assert_same_value(0, calcular_progresso(-1, 2), 'progresso negativo');
 assert_same_value(100, calcular_progresso(3, 2), 'progresso acima do total');
+assert_same_value(
+    'Robótica Educacional nas Escolas Públicas',
+    corrigir_texto_legado('Rob├│tica Educacional nas Escolas P├║blicas'),
+    'correcao de texto legado em CP437'
+);
+assert_same_value(
+    'Robótica Educacional nas Escolas Públicas',
+    corrigir_texto_legado('Robótica Educacional nas Escolas Públicas'),
+    'texto UTF-8 permanece inalterado'
+);
+$uniqueProjects = consolidar_projetos_por_titulo([
+    ['id' => 1, 'titulo' => 'Rob├│tica Educacional nas Escolas P├║blicas'],
+    ['id' => 2, 'titulo' => 'Robótica Educacional nas Escolas Públicas'],
+]);
+assert_same_value(1, count($uniqueProjects), 'titulos equivalentes aparecem uma vez');
+assert_same_value(2, $uniqueProjects[0]['id'], 'titulo UTF-8 preserva o registro integro');
 
 assert_same_value(
     'Selecione um arquivo PDF.',

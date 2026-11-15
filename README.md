@@ -5,7 +5,7 @@ Aplicacao didatica em PHP com PDO e MariaDB/MySQL para acompanhar projetos, equi
 ## Requisitos
 
 - XAMPP com Apache, PHP 8.0+ e MariaDB/MySQL.
-- Extensoes PHP `pdo_mysql`, `fileinfo` e `mbstring` habilitadas.
+- Extensoes PHP `pdo_mysql`, `fileinfo`, `mbstring` e `iconv` habilitadas.
 - Chart.js e carregado pelo CDN; sem internet, o restante do sistema funciona, mas o grafico nao aparece.
 
 ## Instalar no XAMPP
@@ -30,6 +30,7 @@ Cada sessao autenticada confere a versao das credenciais no banco. Ao alterar ou
 - Roteiro de demonstracao para a banca: `docs/roteiro-demonstracao.md`.
 - Dados de demonstracao: importe `dados_demo.sql` apos o `schema.sql`. Senha de todos: `SenhaDemo123!` (docente `mauro@ifpa.edu.br`).
 - O painel exibe dois graficos: projetos por modalidade e situacao dos relatorios.
+- O painel corrige titulos legados com mojibake CP437 ao exibir projetos e consolida titulos repetidos, mantendo a copia com texto UTF-8 integro. Os scripts SQL tambem definem a conexao de importacao como `utf8mb4`.
 
 ## Fluxos incluidos
 

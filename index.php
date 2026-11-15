@@ -4,18 +4,6 @@ require_once __DIR__ . '/includes/bootstrap.php';
 $user = require_auth();
 $pdo = db();
 
-$statsQuery = $pdo->prepare(
-    'SELECT COUNT(DISTINCT p.id) AS total,
-            SUM(p.status = \'Em andamento\') AS andamento,
-            SUM(p.status = \'Concluido\') AS concluidos,
-            AVG(vp.progresso) AS progresso_medio
-     FROM projetos p
-     JOIN vw_projetos_progresso vp ON vp.projeto_id = p.id
-     JOIN equipes e ON e.projeto_id = p.id
-     WHERE e.usuario_id = ?'
-);
-$statsQuery->execute([$user['id']]);
-$stats = $statsQuery->fetch() ?: [];
 $projectsQuery = $pdo->prepare(
     'SELECT p.id, p.titulo, p.modalidade, p.data_inicio, p.data_fim, vp.progresso, p.status, p.coordenador_id,
             u.nome AS coordenador,
@@ -26,34 +14,49 @@ $projectsQuery = $pdo->prepare(
      WHERE e.usuario_id = ? ORDER BY p.criado_em DESC'
 );
 $projectsQuery->execute([$user['id']]);
-$projects = $projectsQuery->fetchAll();
-$reportsQuery = $pdo->prepare(
-    'SELECT v.projeto_id, v.tipo, v.data_limite, v.situacao, p.titulo
-     FROM vw_relatorios_situacao v JOIN projetos p ON p.id = v.projeto_id
-     WHERE EXISTS (SELECT 1 FROM equipes e WHERE e.projeto_id = p.id AND e.usuario_id = ?)
-     ORDER BY v.data_limite LIMIT 8'
-);
-$reportsQuery->execute([$user['id']]);
-$upcomingReports = $reportsQuery->fetchAll();
-$chartQuery = $pdo->prepare(
-    'SELECT p.modalidade, COUNT(DISTINCT p.id) AS total FROM projetos p
-     JOIN equipes e ON e.projeto_id = p.id WHERE e.usuario_id = ? GROUP BY p.modalidade'
-);
-$chartQuery->execute([$user['id']]);
-$chartRows = $chartQuery->fetchAll();
-$chartLabels = array_column($chartRows, 'modalidade');
-$chartValues = array_map('intval', array_column($chartRows, 'total'));
+$projects = consolidar_projetos_por_titulo($projectsQuery->fetchAll());
+$stats = ['total' => count($projects)];
+$stats['andamento'] = count(array_filter(
+    $projects,
+    static fn(array $project): bool => $project['status'] === 'Em andamento'
+));
+$stats['concluidos'] = count(array_filter(
+    $projects,
+    static fn(array $project): bool => $project['status'] === 'Concluido'
+));
+$stats['progresso_medio'] = $projects
+    ? array_sum(array_map(static fn(array $project): int => (int) $project['progresso'], $projects)) / count($projects)
+    : 0;
+$chartCounts = [];
+foreach ($projects as $project) {
+    $chartCounts[$project['modalidade']] = ($chartCounts[$project['modalidade']] ?? 0) + 1;
+}
+$chartLabels = array_keys($chartCounts);
+$chartValues = array_values($chartCounts);
 
-$reportChartQuery = $pdo->prepare(
-    'SELECT v.situacao, COUNT(*) AS total
-     FROM vw_relatorios_situacao v
-     WHERE EXISTS (
-         SELECT 1 FROM equipes e WHERE e.projeto_id = v.projeto_id AND e.usuario_id = ?
-     )
-     GROUP BY v.situacao'
-);
-$reportChartQuery->execute([$user['id']]);
-$reportChartRows = $reportChartQuery->fetchAll();
+$projectIds = array_column($projects, 'id');
+$upcomingReports = [];
+$reportChartRows = [];
+if ($projectIds) {
+    $placeholders = implode(', ', array_fill(0, count($projectIds), '?'));
+    $reportsQuery = $pdo->prepare(
+        "SELECT v.projeto_id, v.tipo, v.data_limite, v.situacao, p.titulo
+         FROM vw_relatorios_situacao v JOIN projetos p ON p.id = v.projeto_id
+         WHERE p.id IN ({$placeholders})
+         ORDER BY v.data_limite LIMIT 8"
+    );
+    $reportsQuery->execute($projectIds);
+    $upcomingReports = $reportsQuery->fetchAll();
+
+    $reportChartQuery = $pdo->prepare(
+        "SELECT v.situacao, COUNT(*) AS total
+         FROM vw_relatorios_situacao v
+         WHERE v.projeto_id IN ({$placeholders})
+         GROUP BY v.situacao"
+    );
+    $reportChartQuery->execute($projectIds);
+    $reportChartRows = $reportChartQuery->fetchAll();
+}
 $reportChartLabels = array_column($reportChartRows, 'situacao');
 $reportChartValues = array_map('intval', array_column($reportChartRows, 'total'));
 $statusColors = [
@@ -127,7 +130,7 @@ require __DIR__ . '/includes/header.php';
     </section>
     <aside class="side-column">
         <section class="panel"><h2>Prazos de relatórios</h2><ul class="deadline-list">
-            <?php foreach ($upcomingReports as $report): ?><li><div><strong><?= h($report['titulo']) ?></strong><small><?= h($report['tipo']) ?> · <?= h($report['data_limite']) ?></small></div><span class="status status-<?= strtolower(h($report['situacao'])) ?>"><?= h($report['situacao']) ?></span></li><?php endforeach; ?>
+            <?php foreach ($upcomingReports as $report): ?><li><div><strong><?= h(corrigir_texto_legado($report['titulo'])) ?></strong><small><?= h($report['tipo']) ?> · <?= h($report['data_limite']) ?></small></div><span class="status status-<?= strtolower(h($report['situacao'])) ?>"><?= h($report['situacao']) ?></span></li><?php endforeach; ?>
             <?php if (!$upcomingReports): ?><li class="empty">Sem prazos cadastrados.</li><?php endif; ?>
         </ul><a class="text-link" href="entregar_relatorio.php">Ver relatórios</a></section>
     </aside>

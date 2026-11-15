@@ -1,6 +1,7 @@
 CREATE DATABASE IF NOT EXISTS sgp_ifpa
     CHARACTER SET utf8mb4
     COLLATE utf8mb4_unicode_ci;
+SET NAMES utf8mb4;
 USE sgp_ifpa;
 
 CREATE TABLE usuarios (

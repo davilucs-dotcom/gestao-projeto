@@ -5,9 +5,13 @@ require_once dirname(__DIR__) . '/config/db.php';
 require_once __DIR__ . '/security.php';
 
 $isHttps = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
-$cookiePath = getenv('SGP_COOKIE_PATH') ?: '/gestao-projetos/';
+$scriptDirectory = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
+$defaultCookiePath = $scriptDirectory === '/' || $scriptDirectory === '.'
+    ? '/'
+    : rtrim($scriptDirectory, '/') . '/';
+$cookiePath = getenv('SGP_COOKIE_PATH') ?: $defaultCookiePath;
 if ($cookiePath[0] !== '/') {
-    $cookiePath = '/gestao-projetos/';
+    $cookiePath = $defaultCookiePath;
 }
 
 if (getenv('SGP_ENV') !== 'dev') {
@@ -32,6 +36,43 @@ send_security_headers(false);
 function h(mixed $value): string
 {
     return htmlspecialchars(is_scalar($value) ? (string) $value : '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function corrigir_texto_legado(string $value): string
+{
+    if (!str_contains($value, '├')) {
+        return $value;
+    }
+
+    if (!function_exists('iconv')) {
+        return $value;
+    }
+
+    $converted = iconv('UTF-8', 'CP437', $value);
+    return $converted !== false && mb_check_encoding($converted, 'UTF-8') ? $converted : $value;
+}
+
+function consolidar_projetos_por_titulo(array $projects): array
+{
+    $projectsByTitle = [];
+    foreach ($projects as $project) {
+        $originalTitle = (string) $project['titulo'];
+        $project['titulo'] = corrigir_texto_legado($originalTitle);
+        $titleKey = mb_strtolower(trim($project['titulo']), 'UTF-8');
+        $isCorrupted = $originalTitle !== $project['titulo'];
+
+        if (!isset($projectsByTitle[$titleKey]) || ($projectsByTitle[$titleKey]['corrupted'] && !$isCorrupted)) {
+            $projectsByTitle[$titleKey] = [
+                'project' => $project,
+                'corrupted' => $isCorrupted,
+            ];
+        }
+    }
+
+    return array_values(array_map(
+        static fn(array $entry): array => $entry['project'],
+        $projectsByTitle
+    ));
 }
 
 function csrf_token(): string
